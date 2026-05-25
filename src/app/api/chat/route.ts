@@ -1,20 +1,20 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getProvider } from '@/lib/llm';
-import { SYSTEM_TEACHER, SYSTEM_SUBTHREAD } from '@/lib/llm/prompts';
+import { SYSTEM_TEACHER, SYSTEM_BRANCH } from '@/lib/llm/prompts';
 
 const Schema = z.object({
   messages: z.array(z.object({ role: z.enum(['user', 'assistant', 'system']), content: z.string() })),
-  mode: z.enum(['teach', 'subthread', 'grade']).optional(),
-  triggerWord: z.string().optional(),
+  mode: z.enum(['teach', 'branch']).optional(),
+  selectedText: z.string().optional(),
   parentContext: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
   const body = Schema.parse(await req.json());
   const sys =
-    body.mode === 'subthread' && body.triggerWord
-      ? SYSTEM_SUBTHREAD(body.triggerWord, body.parentContext ?? '')
+    body.mode === 'branch' && body.selectedText
+      ? SYSTEM_BRANCH(body.selectedText, body.parentContext ?? '')
       : SYSTEM_TEACHER;
   const messages = [{ role: 'system' as const, content: sys }, ...body.messages];
 
@@ -25,8 +25,9 @@ export async function POST(req: NextRequest) {
         for await (const chunk of getProvider().chatStream(messages)) {
           controller.enqueue(encoder.encode(chunk));
         }
-      } catch (e: any) {
-        controller.enqueue(encoder.encode(`\n[ERROR]${e.message}`));
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        controller.enqueue(encoder.encode(`\n[ERROR]${msg}`));
       } finally { controller.close(); }
     },
   });
