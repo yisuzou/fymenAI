@@ -2,7 +2,10 @@ import OpenAI from 'openai';
 import type { LLMProvider, LLMMessage } from './types';
 
 export function createOpenAIProvider(): LLMProvider {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const client = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+    baseURL: process.env.OPENAI_BASE_URL,
+  });
   const model = process.env.LLM_MODEL ?? 'gpt-4o-mini';
   return {
     async *chatStream(messages: LLMMessage[], opts = {}) {
