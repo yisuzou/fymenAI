@@ -4,18 +4,16 @@ import { useMessageStore, selectMessagesOfBranch, selectBranchesUnder } from '@/
 import { useUiStore } from '@/lib/store/uiStore';
 import { sendMessage } from '@/lib/store/actions';
 import { Markdown } from './Markdown';
-import { ChatInput } from './ChatInput';
 import { SelectionPopover, useTextSelection } from './SelectionPopover';
+import { BranchBadge } from './BranchBadge';
 import type { Message } from '@/lib/types';
 
 interface Props {
   topicId: string;
   branchId: string;
-  /** Indentation depth for nested branches (0 = main). */
-  depth?: number;
 }
 
-export function ConversationView({ topicId, branchId, depth = 0 }: Props) {
+export function ConversationView({ topicId, branchId }: Props) {
   const byTopic = useMessageStore((s) => s.byTopic);
   const streamingId = useMessageStore((s) => s.streamingMessageId);
   const messages = useMemo(
@@ -25,8 +23,8 @@ export function ConversationView({ topicId, branchId, depth = 0 }: Props) {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const selection = useTextSelection(containerRef);
+  const setFocused = useUiStore((s) => s.setFocusedBranch);
 
-  // Determine which assistant message the active selection lives in, if any.
   const selectionMessageId = useMemo(() => {
     if (!selection) return null;
     const s = window.getSelection();
@@ -43,27 +41,26 @@ export function ConversationView({ topicId, branchId, depth = 0 }: Props) {
     if (!selectionMessageId) return;
     void sendMessage({
       topicId,
-      branchId, // unused — newBranch overrides
+      branchId,
       text: `请详细解释「${text}」`,
       newBranch: { parentMessageId: selectionMessageId, selectedText: text },
+    }).then(({ branchId: newId }) => {
+      setFocused(newId);
     });
     window.getSelection()?.removeAllRanges();
-    // Auto-open the new branch — it will be keyed by the new user message id;
-    // the store will surface it under selectBranchesUnder shortly.
-    // We can't know the id here without coupling; the BranchBlock auto-renders.
   }
 
   return (
-    <div ref={containerRef} className="flex flex-col gap-3">
+    <div ref={containerRef} className="flex w-full min-w-0 flex-col gap-3">
       {messages.map((m) => (
-        <MessageNode key={m.id} message={m} topicId={topicId} branchId={branchId} depth={depth} streamingId={streamingId} />
+        <MessageNode key={m.id} message={m} topicId={topicId} streamingId={streamingId} />
       ))}
-      {messages.length === 0 && depth === 0 && (
+      {messages.length === 0 && (
         <div className="rounded border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
           开始一个新的提问吧。AI 回复后，框选任意文本即可创建追问分支。
         </div>
       )}
-      {depth === 0 && <SelectionPopover selection={selection} onAsk={onAsk} />}
+      <SelectionPopover selection={selection} onAsk={onAsk} />
     </div>
   );
 }
@@ -71,26 +68,20 @@ export function ConversationView({ topicId, branchId, depth = 0 }: Props) {
 interface NodeProps {
   message: Message;
   topicId: string;
-  branchId: string;
-  depth: number;
   streamingId: string | null;
 }
 
-function MessageNode({ message, topicId, depth, streamingId }: NodeProps) {
+function MessageNode({ message, topicId, streamingId }: NodeProps) {
   const byTopic = useMessageStore((s) => s.byTopic);
   const branches = useMemo(
     () => selectBranchesUnder(byTopic, topicId, message.id),
     [byTopic, topicId, message.id],
   );
 
-  const expanded = useUiStore((s) => s.expandedBranches);
-  const toggleBranch = useUiStore((s) => s.toggleBranch);
-  const setFocused = useUiStore((s) => s.setFocusedBranch);
   const scrollTarget = useUiStore((s) => s.scrollTargetMessageId);
   const setScrollTarget = useUiStore((s) => s.setScrollTarget);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Scroll into view when this message is the target.
   useEffect(() => {
     if (scrollTarget === message.id && ref.current) {
       ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -99,75 +90,36 @@ function MessageNode({ message, topicId, depth, streamingId }: NodeProps) {
   }, [scrollTarget, message.id, setScrollTarget]);
 
   const isAssistant = message.role === 'assistant';
+  const isUser = message.role === 'user';
 
   return (
-    <div ref={ref} className="flex flex-col gap-2">
+    <div ref={ref} className={`flex w-full min-w-0 flex-col gap-2 ${isUser ? 'items-end' : 'items-start'}`}>
       <div
         data-message-id={message.id}
-        className={`max-w-full rounded-lg p-3 ${
-          message.role === 'user'
-            ? 'self-end bg-blue-50 ml-auto'
-            : 'self-start bg-white shadow-sm border border-gray-100'
+        className={`min-w-0 max-w-[90%] overflow-hidden rounded-lg p-3 ${
+          isUser
+            ? 'bg-blue-50'
+            : 'border border-gray-100 bg-white shadow-sm'
         }`}
-        style={{ maxWidth: '90%' }}
+        style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}
       >
         {isAssistant ? (
           <Markdown content={message.content || '...'} />
         ) : (
-          <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+          <p className="whitespace-pre-wrap break-words text-sm">{message.content}</p>
         )}
         {streamingId === message.id && (
           <span className="ml-1 inline-block h-3 w-2 animate-pulse bg-gray-400" />
         )}
       </div>
 
-      {/* Inline branch blocks for any branches hanging off THIS message */}
-      {branches.map((firstMsg) => {
-        const bId = firstMsg.branchId;
-        const open = expanded[bId] !== false; // default open after creation
-        return (
-          <div
-            key={bId}
-            className="ml-6 rounded-lg border-l-4 border-blue-400 bg-blue-50/30"
-            style={{ marginLeft: 16 + Math.min(depth, 3) * 8 }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                toggleBranch(bId, !open);
-                setFocused(bId);
-              }}
-              className="flex w-full items-center gap-2 rounded-t-lg bg-blue-100/60 px-3 py-1.5 text-left text-xs hover:bg-blue-100"
-            >
-              <span className="text-blue-600">{open ? '▼' : '▶'}</span>
-              <span className="text-gray-500">追问：</span>
-              <span className="truncate font-medium text-blue-900">
-                「{firstMsg.branchFrom?.selectedText ?? ''}」
-              </span>
-            </button>
-            {open && (
-              <div className="p-3">
-                <ConversationView topicId={topicId} branchId={bId} depth={depth + 1} />
-                <BranchComposer topicId={topicId} branchId={bId} />
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function BranchComposer({ topicId, branchId }: { topicId: string; branchId: string }) {
-  const streamingId = useMessageStore((s) => s.streamingMessageId);
-  return (
-    <div className="mt-2">
-      <ChatInput
-        size="sm"
-        placeholder="在此分支继续追问…"
-        disabled={!!streamingId}
-        onSend={(text) => void sendMessage({ topicId, branchId, text })}
-      />
+      {branches.length > 0 && (
+        <div className={`flex max-w-[90%] flex-wrap gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+          {branches.map((firstMsg) => (
+            <BranchBadge key={firstMsg.branchId} topicId={topicId} firstMessage={firstMsg} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
