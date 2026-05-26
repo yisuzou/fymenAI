@@ -24,18 +24,31 @@ export function ConversationView({ topicId, branchId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const selection = useTextSelection(containerRef);
   const setFocused = useUiStore((s) => s.setFocusedBranch);
+  // Guard against double-fires for the same (parentMessageId, selectedText)
+  // within a short window (e.g., StrictMode, accidental double-click,
+  // duplicate listeners across mounted ConversationViews).
+  const inFlightRef = useRef<Set<string>>(new Set());
 
   function onAsk(snapshot: Selection) {
     if (!snapshot.messageId) return;
+    const key = `${snapshot.messageId}::${snapshot.text}`;
+    if (inFlightRef.current.has(key)) return;
+    inFlightRef.current.add(key);
+    window.getSelection()?.removeAllRanges();
     void sendMessage({
       topicId,
       branchId,
       text: `请详细解释「${snapshot.text}」`,
       newBranch: { parentMessageId: snapshot.messageId, selectedText: snapshot.text },
-    }).then(({ branchId: newId }) => {
-      setFocused(newId);
-    });
-    window.getSelection()?.removeAllRanges();
+    })
+      .then(({ branchId: newId }) => {
+        setFocused(newId);
+      })
+      .finally(() => {
+        // Keep the guard for a beat after completion to swallow late
+        // duplicate clicks; then release so the user can re-ask later.
+        setTimeout(() => inFlightRef.current.delete(key), 1000);
+      });
   }
 
   return (

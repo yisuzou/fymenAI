@@ -121,6 +121,31 @@ export async function sendMessage(opts: SendOpts): Promise<{ branchId: string; a
   const { topicId, text } = opts;
   const ms = useMessageStore.getState();
 
+  // Dedup: if this call would create a NEW branch with the same
+  // (parentMessageId, selectedText) as an existing branch, do not create a
+  // duplicate. Return the existing branch's ids so callers can focus it.
+  if (opts.newBranch) {
+    const tStore = ms.byTopic[topicId] ?? {};
+    for (const id in tStore) {
+      const m = tStore[id];
+      if (
+        m.branchFrom &&
+        m.branchFrom.parentMessageId === opts.newBranch.parentMessageId &&
+        m.branchFrom.selectedText === opts.newBranch.selectedText
+      ) {
+        let existingAssistantId = '';
+        for (const id2 in tStore) {
+          const m2 = tStore[id2];
+          if (m2.branchId === m.branchId && m2.role === 'assistant') {
+            existingAssistantId = m2.id;
+            break;
+          }
+        }
+        return { branchId: m.branchId, assistantId: existingAssistantId };
+      }
+    }
+  }
+
   // Compute the actual branchId
   let branchId = opts.branchId;
   const userId = nanoid();

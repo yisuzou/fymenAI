@@ -88,11 +88,16 @@ interface PopoverProps {
 
 export function SelectionPopover({ selection, onAsk }: PopoverProps) {
   const ref = useRef<HTMLButtonElement>(null);
+  // Remember the last selection key we fired onAsk for; subsequent clicks
+  // on the same selection are ignored so the button can only create one
+  // branch per selection.
+  const lastFiredKeyRef = useRef<string | null>(null);
   if (!selection) return null;
   // Snapshot the selection at render time so the click handler is immune
   // to any state changes (e.g., selectionchange firing between mousedown
   // and click on this button).
   const snapshot = selection;
+  const key = `${snapshot.messageId}::${snapshot.text}`;
   return (
     <button
       ref={ref}
@@ -101,7 +106,11 @@ export function SelectionPopover({ selection, onAsk }: PopoverProps) {
         // Prevent losing the selection before click handler fires.
         e.preventDefault();
       }}
-      onClick={() => onAsk(snapshot)}
+      onClick={() => {
+        if (lastFiredKeyRef.current === key) return;
+        lastFiredKeyRef.current = key;
+        onAsk(snapshot);
+      }}
       style={{
         position: 'fixed',
         top: selection.rect.top - window.scrollY - 40,
