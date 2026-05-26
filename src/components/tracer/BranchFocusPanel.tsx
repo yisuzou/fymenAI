@@ -4,6 +4,7 @@ import { useMessageStore, selectMessagesOfBranch } from '@/lib/store/messageStor
 import { useUiStore } from '@/lib/store/uiStore';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { ConversationView } from '@/components/chat/ConversationView';
+import { FeynmanCheck } from '@/components/chat/FeynmanCheck';
 import { Mindmap } from '@/components/tracer/Mindmap';
 import { sendMessage } from '@/lib/store/actions';
 
@@ -78,6 +79,7 @@ export function BranchFocusPanel({ topicId }: Props) {
           <ConversationView topicId={topicId} branchId={branchId} />
         )}
       </div>
+      {!isMain && title && <FeynmanCheck topic={title} />}
       <ChatInput
         size="sm"
         placeholder={isMain ? '继续主对话…' : '在此焦点分支继续追问…'}

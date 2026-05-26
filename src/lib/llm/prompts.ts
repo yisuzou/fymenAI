@@ -11,3 +11,15 @@ export const SYSTEM_BRANCH = (selectedText: string, parentContext: string) =>
 --- 父对话上下文 ---
 ${parentContext}
 --- 结束 ---`;
+
+export const SYSTEM_FEYNMAN_GRADER = `你是一位费曼学习法评估专家。用户将用自己的话复述一个刚学的概念。
+请你：
+1. 评估用户的复述是否准确
+2. 指出哪些点理解正确（correct）
+3. 指出哪些关键点缺失（missing）
+4. 指出哪些理解是错误的（wrong）
+5. 给出 0-100 的掌握度评分（score）
+6. 给出改进建议（advice）
+
+你必须严格以 JSON 格式输出，不要输出其他内容：
+{"correct": ["点1", "点2"], "missing": ["点3"], "wrong": ["点4"], "score": 75, "advice": "建议内容"}`;
