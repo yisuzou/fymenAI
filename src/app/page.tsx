@@ -1,5 +1,5 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useTopicStore } from '@/lib/store/topicStore';
 import { useMessageStore } from '@/lib/store/messageStore';
 import { useUiStore } from '@/lib/store/uiStore';
@@ -17,6 +17,48 @@ export default function Page() {
   const topicsLoaded = useTopicStore((s) => s.loaded);
   const topicsOrder = useTopicStore((s) => s.order);
   const topics = useTopicStore((s) => s.topics);
+
+  // Resizable right panel (persisted in uiStore)
+  const rightWidth = useUiStore((s) => s.rightPanelWidth);
+  const setRightWidth = useUiStore((s) => s.setRightPanelWidth);
+  const rightWidthRef = useRef(420);
+  // Keep rightWidthRef in sync
+  useEffect(() => { rightWidthRef.current = rightWidth; }, [rightWidth]);
+
+  const isDragging = useRef(false);
+  const startX = useRef(0);
+  const startWidth = useRef(0);
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    startX.current = e.clientX;
+    startWidth.current = rightWidthRef.current;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isDragging.current) return;
+      const delta = startX.current - e.clientX;
+      const newWidth = Math.min(800, Math.max(280, startWidth.current + delta));
+      setRightWidth(newWidth);
+    }
+    function onMouseUp() {
+      if (isDragging.current) {
+        isDragging.current = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    }
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   // Initial: load all topics, then load messages for active (or first) topic
   useEffect(() => {
@@ -91,8 +133,23 @@ export default function Page() {
         />
       </section>
 
+      {/* Drag handle */}
+      <div
+        className="group relative flex w-1 flex-shrink-0 cursor-col-resize items-center justify-center bg-gray-200 hover:bg-blue-300 active:bg-blue-400"
+        onMouseDown={onMouseDown}
+      >
+        <div className="flex flex-col items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="h-1 w-1 rounded-full bg-gray-400" />
+          <div className="h-1 w-1 rounded-full bg-gray-400" />
+          <div className="h-1 w-1 rounded-full bg-gray-400" />
+        </div>
+      </div>
+
       {/* RIGHT: focused branch detail */}
-      <aside className="flex h-full w-[420px] flex-col border-l bg-gray-50">
+      <aside
+        className="flex h-full flex-col border-l bg-gray-50"
+        style={{ width: rightWidth }}
+      >
         {activeTopicId ? (
           <BranchFocusPanel topicId={activeTopicId} />
         ) : (

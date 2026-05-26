@@ -2,6 +2,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { memo } from 'react';
+import React from 'react';
 
 export const Markdown = memo(function Markdown({ content }: { content: string }) {
   return (
@@ -79,7 +80,31 @@ export const Markdown = memo(function Markdown({ content }: { content: string })
           td: ({ children }) => (
             <td className="border-r border-gray-200 px-3 py-2 align-top last:border-0">{children}</td>
           ),
-          pre: ({ children }) => <>{children}</>,
+          pre: ({ children }) => {
+            // Check if this is a fenced code block (has a code child with className)
+            const codeChild = Array.isArray(children)
+              ? children.find(
+                  (c: React.ReactNode) => React.isValidElement(c) && c.type === 'code',
+                )
+              : React.isValidElement(children) && children.type === 'code'
+                ? children
+                : null;
+
+            if (
+              codeChild &&
+              React.isValidElement(codeChild) &&
+              (codeChild.props as { className?: string })?.className
+            ) {
+              // Fenced code block — pass through, code handler renders the styled block
+              return <>{children}</>;
+            }
+            // Plain pre (ASCII diagrams etc.) — wrap with styling
+            return (
+              <pre className="my-3 max-w-full overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-[13px] leading-relaxed">
+                {children}
+              </pre>
+            );
+          },
           code(props) {
             const { className, children, ...rest } = props as {
               className?: string;

@@ -4,6 +4,7 @@ import { useMessageStore, selectMessagesOfBranch } from '@/lib/store/messageStor
 import { useUiStore } from '@/lib/store/uiStore';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { ConversationView } from '@/components/chat/ConversationView';
+import { Mindmap } from '@/components/tracer/Mindmap';
 import { sendMessage } from '@/lib/store/actions';
 
 interface Props {
@@ -15,28 +16,30 @@ export function BranchFocusPanel({ topicId }: Props) {
   const byTopic = useMessageStore((s) => s.byTopic);
   const streamingId = useMessageStore((s) => s.streamingMessageId);
   const messages = useMemo(
-    () => selectMessagesOfBranch(byTopic, topicId, branchId),
+    () => (branchId === 'main' ? [] : selectMessagesOfBranch(byTopic, topicId, branchId)),
     [byTopic, topicId, branchId],
   );
 
   const first = messages[0];
   const isMain = branchId === 'main';
-  const title = isMain ? '主对话' : first?.branchFrom?.selectedText ?? '分支';
+  const title = isMain ? '知识图谱' : first?.branchFrom?.selectedText ?? '分支';
 
   return (
     <div className="flex h-full min-w-0 flex-col">
       <header className="flex items-center justify-between border-b bg-white px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="text-xs uppercase tracking-wide text-gray-500">
-            {isMain ? '当前焦点' : '分支焦点'}
+            {isMain ? '知识图谱' : '分支焦点'}
           </div>
           <h2 className="truncate font-semibold" title={title}>
-            「{title}」
+            {isMain ? title : `「${title}」`}
           </h2>
         </div>
       </header>
       <div className="min-w-0 flex-1 overflow-y-auto p-4">
-        {messages.length === 0 ? (
+        {isMain ? (
+          <Mindmap topicId={topicId} />
+        ) : messages.length === 0 ? (
           <div className="rounded border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
             在左侧 Tracer 选择一个节点，或在主对话中点击分支标签查看完整内容。
           </div>

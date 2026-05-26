@@ -9,6 +9,10 @@ interface State {
   focusedBranchId: string;
   /** Optional: id of a message to scroll to. */
   scrollTargetMessageId: string | null;
+  /** Whether the topic list in the left sidebar is collapsed. */
+  topicListCollapsed: boolean;
+  /** Persisted width of the right panel (px). */
+  rightPanelWidth: number;
 }
 
 interface Actions {
@@ -16,6 +20,8 @@ interface Actions {
   toggleBranch: (branchId: string, open?: boolean) => void;
   setFocusedBranch: (branchId: string) => void;
   setScrollTarget: (id: string | null) => void;
+  setTopicListCollapsed: (collapsed: boolean) => void;
+  setRightPanelWidth: (width: number) => void;
 }
 
 export const useUiStore = create<State & Actions>()(
@@ -25,6 +31,8 @@ export const useUiStore = create<State & Actions>()(
       expandedBranches: {},
       focusedBranchId: 'main',
       scrollTargetMessageId: null,
+      topicListCollapsed: false,
+      rightPanelWidth: 420,
       setActiveTopic: (id) => set({ activeTopicId: id, focusedBranchId: 'main' }),
       toggleBranch: (branchId, open) =>
         set((s) => ({
@@ -35,6 +43,8 @@ export const useUiStore = create<State & Actions>()(
         })),
       setFocusedBranch: (branchId) => set({ focusedBranchId: branchId }),
       setScrollTarget: (id) => set({ scrollTargetMessageId: id }),
+      setTopicListCollapsed: (collapsed) => set({ topicListCollapsed: collapsed }),
+      setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
     }),
     { name: 'feynman.ui' },
   ),
