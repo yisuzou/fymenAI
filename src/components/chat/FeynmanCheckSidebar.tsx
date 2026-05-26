@@ -8,11 +8,13 @@ interface Props {
   topicId: string;
 }
 
+const EMPTY_RESULTS: Record<string, import('@/lib/store/feynmanStore').FeynmanResult> = {};
+
 export function FeynmanCheckSidebar({ topicId }: Props) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const byTopic = useMessageStore((s) => s.byTopic);
-  const results = useFeynmanStore((s) => s.results[topicId] ?? {});
+  const results = useFeynmanStore((s) => s.results[topicId] ?? EMPTY_RESULTS);
 
   const questions = useMemo(() => {
     const map = byTopic[topicId];
