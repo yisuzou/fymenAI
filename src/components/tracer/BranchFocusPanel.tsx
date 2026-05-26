@@ -30,17 +30,26 @@ export function BranchFocusPanel({ topicId }: Props) {
       void sendMessage({ topicId, branchId, text });
       return;
     }
-    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
-    if (!lastAssistant) {
+    if (!first) {
       void sendMessage({ topicId, branchId, text });
       return;
     }
+    // Create a SIBLING branch under the same parent as the current branch.
+    // Use the parent's branchId so the new message lives in the parent branch,
+    // and parentMessageId points to this branch's first message so the Tracer
+    // places it as a sibling (e.g., Q1.2 next to Q1.1 under Q1).
+    const parentBranchId = first.branchFrom
+      ? (() => {
+          const parentMsg = byTopic[topicId]?.[first.branchFrom.parentMessageId];
+          return parentMsg?.branchId ?? 'main';
+        })()
+      : 'main';
     const selectedText = text.length > 24 ? text.slice(0, 24) + '…' : text;
     void sendMessage({
       topicId,
-      branchId,
+      branchId: parentBranchId,
       text,
-      newBranch: { parentMessageId: lastAssistant.id, selectedText },
+      newBranch: { parentMessageId: first.id, selectedText },
     }).then(({ branchId: newId }) => {
       setFocusedBranch(newId);
     });
