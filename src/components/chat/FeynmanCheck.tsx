@@ -2,12 +2,15 @@
 import { useState } from 'react';
 import { fetchStream } from '@/lib/utils/fetchStream';
 import { parseGrade, type GradeResult } from '@/lib/utils/grader';
+import { useFeynmanStore } from '@/lib/store/feynmanStore';
 
 interface Props {
   topic: string;
+  topicId?: string;
 }
 
-export function FeynmanCheck({ topic }: Props) {
+export function FeynmanCheck({ topic, topicId }: Props) {
+  const saveResult = useFeynmanStore((s) => s.setResult);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,6 +39,9 @@ export function FeynmanCheck({ topic }: Props) {
         setError('无法解析评估结果，请重试。');
       } else {
         setResult(parsed);
+        if (topicId) {
+          saveResult(topicId, topic, { ...parsed, testedAt: Date.now() });
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

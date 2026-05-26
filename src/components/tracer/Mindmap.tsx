@@ -2,12 +2,14 @@
 import { useMemo, useState } from 'react';
 import { useMessageStore } from '@/lib/store/messageStore';
 import { useUiStore } from '@/lib/store/uiStore';
+import { useFeynmanStore } from '@/lib/store/feynmanStore';
 import type { Message } from '@/lib/types';
 
 interface MindmapNode {
   id: string;
   branchId: string;
   label: string;
+  fullLabel: string;
   summary: string;
   childCount: number;
   children: MindmapNode[];
@@ -94,7 +96,15 @@ function buildMindmapTree(
       return (aMsg?.createdAt ?? 0) - (bMsg?.createdAt ?? 0);
     });
 
-    return { id: branchId, branchId, label, summary, childCount: children.length, children };
+    return {
+      id: branchId,
+      branchId,
+      label,
+      fullLabel: label,
+      summary,
+      childCount: children.length,
+      children,
+    };
   }
 
   return userMsgs.map((msg, idx) => {
@@ -121,6 +131,7 @@ function buildMindmapTree(
       id: `q-${msg.id}`,
       branchId: 'main',
       label: msg.content.length > 40 ? msg.content.slice(0, 40) + '…' : msg.content,
+      fullLabel: msg.content,
       summary: aiSummary,
       childCount: children.length,
       children,
@@ -155,7 +166,7 @@ export function Mindmap({ topicId }: MindmapProps) {
   return (
     <div className="space-y-4 p-2">
       {nodes.map((node, idx) => (
-        <RootCard key={node.id} node={node} index={idx} onClick={handleClick} />
+        <RootCard key={node.id} node={node} index={idx} onClick={handleClick} topicId={topicId} />
       ))}
     </div>
   );
@@ -165,10 +176,12 @@ interface RootCardProps {
   node: MindmapNode;
   index: number;
   onClick: (branchId: string) => void;
+  topicId: string;
 }
 
-function RootCard({ node, index, onClick }: RootCardProps) {
+function RootCard({ node, index, onClick, topicId }: RootCardProps) {
   const [expanded, setExpanded] = useState(true);
+  const result = useFeynmanStore((s) => s.results[topicId]?.[node.fullLabel]);
 
   return (
     <div>
@@ -179,7 +192,10 @@ function RootCard({ node, index, onClick }: RootCardProps) {
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="text-xs font-bold text-white/70">Q{index + 1}</div>
+            <div className="flex items-center gap-2">
+              <div className="text-xs font-bold text-white/70">Q{index + 1}</div>
+              {result && <RootScoreBadge score={result.score} />}
+            </div>
             <div className="mt-0.5 text-sm font-medium leading-snug">{node.label}</div>
             {node.summary && (
               <div className="mt-1 text-xs leading-relaxed text-white/60">{node.summary}</div>
@@ -300,4 +316,18 @@ function BranchNode({ node, depth, onClick }: BranchNodeProps) {
 
 function truncate(s: string, n: number) {
   return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+function RootScoreBadge({ score }: { score: number }) {
+  const clamped = Math.max(0, Math.min(100, score));
+  const color =
+    clamped >= 80 ? 'bg-green-500' : clamped >= 60 ? 'bg-yellow-500' : 'bg-red-500';
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-bold text-white ${color}`}
+      title="费曼检验得分"
+    >
+      🧠 {clamped}
+    </span>
+  );
 }

@@ -79,7 +79,7 @@ export function BranchFocusPanel({ topicId }: Props) {
           <ConversationView topicId={topicId} branchId={branchId} />
         )}
       </div>
-      {!isMain && title && <FeynmanCheck topic={title} />}
+      {!isMain && title && <FeynmanCheck key={branchId} topicId={topicId} topic={title} />}
       <ChatInput
         size="sm"
         placeholder={isMain ? '继续主对话…' : '在此焦点分支继续追问…'}

@@ -3,6 +3,7 @@ import { useMemo, useState, useCallback } from 'react';
 import { useMessageStore } from '@/lib/store/messageStore';
 import { useUiStore } from '@/lib/store/uiStore';
 import type { Message } from '@/lib/types';
+import { FeynmanCheckSidebar } from '@/components/chat/FeynmanCheckSidebar';
 
 interface TracerNode {
   id: string;
@@ -151,28 +152,29 @@ export function Tracer({ topicId }: TracerProps) {
     if (firstMsgId) setScrollTarget(firstMsgId);
   }
 
-  if (nodes.length === 0) {
-    return (
-      <div className="px-2 py-4 text-xs text-gray-400">
-        还没有提问记录。
-      </div>
-    );
-  }
-
   return (
-    <div className="text-sm">
-      <div className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-        提问 Tracer
-      </div>
-      <div className="flex flex-col gap-1">
-        {nodes.map((node) => (
-          <TopLevelNode
-            key={node.id}
-            node={node}
-            onClick={onClickNode}
-            focusedBranchId={focusedBranchId}
-          />
-        ))}
+    <div className="flex flex-col text-sm">
+      {nodes.length === 0 ? (
+        <div className="px-2 py-4 text-xs text-gray-400">还没有提问记录。</div>
+      ) : (
+        <>
+          <div className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            提问 Tracer
+          </div>
+          <div className="flex flex-col gap-1">
+            {nodes.map((node) => (
+              <TopLevelNode
+                key={node.id}
+                node={node}
+                onClick={onClickNode}
+                focusedBranchId={focusedBranchId}
+              />
+            ))}
+          </div>
+        </>
+      )}
+      <div className="mt-4 -mx-3 -mb-3">
+        <FeynmanCheckSidebar topicId={topicId} />
       </div>
     </div>
   );
