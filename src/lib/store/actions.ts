@@ -226,11 +226,21 @@ export async function sendMessage(opts: SendOpts): Promise<{ branchId: string; a
 export async function ensureTopicAndSend(text: string): Promise<string> {
   const ui = useUiStore.getState();
   let topicId = ui.activeTopicId;
+  const derivedTitle = text.length > 24 ? text.slice(0, 24) + '…' : text;
   if (!topicId) {
-    const title = text.length > 24 ? text.slice(0, 24) + '…' : text;
-    const t = await createTopic(title);
+    const t = await createTopic(derivedTitle);
     topicId = t.id;
     ui.setActiveTopic(t.id);
+  } else {
+    const existing = useTopicStore.getState().topics[topicId];
+    if (existing && existing.title === '新主题') {
+      useTopicStore.getState().rename(topicId, derivedTitle);
+      void fetch(`/api/topics/${topicId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: derivedTitle }),
+      });
+    }
   }
   await sendMessage({ topicId, branchId: 'main', text });
   return topicId;

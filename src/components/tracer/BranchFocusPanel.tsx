@@ -13,6 +13,7 @@ interface Props {
 
 export function BranchFocusPanel({ topicId }: Props) {
   const branchId = useUiStore((s) => s.focusedBranchId);
+  const setFocusedBranch = useUiStore((s) => s.setFocusedBranch);
   const byTopic = useMessageStore((s) => s.byTopic);
   const streamingId = useMessageStore((s) => s.streamingMessageId);
   const messages = useMemo(
@@ -23,6 +24,27 @@ export function BranchFocusPanel({ topicId }: Props) {
   const first = messages[0];
   const isMain = branchId === 'main';
   const title = isMain ? '知识图谱' : first?.branchFrom?.selectedText ?? '分支';
+
+  function handleSend(text: string) {
+    if (isMain) {
+      void sendMessage({ topicId, branchId, text });
+      return;
+    }
+    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+    if (!lastAssistant) {
+      void sendMessage({ topicId, branchId, text });
+      return;
+    }
+    const selectedText = text.length > 24 ? text.slice(0, 24) + '…' : text;
+    void sendMessage({
+      topicId,
+      branchId,
+      text,
+      newBranch: { parentMessageId: lastAssistant.id, selectedText },
+    }).then(({ branchId: newId }) => {
+      setFocusedBranch(newId);
+    });
+  }
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -51,7 +73,7 @@ export function BranchFocusPanel({ topicId }: Props) {
         size="sm"
         placeholder={isMain ? '继续主对话…' : '在此焦点分支继续追问…'}
         disabled={!!streamingId}
-        onSend={(text) => void sendMessage({ topicId, branchId, text })}
+        onSend={handleSend}
       />
     </div>
   );
