@@ -46,8 +46,8 @@ function buildMindmapTree(
     }
   }
 
-  // Group sub-branches by question
-  // Sort branch IDs by createdAt so parents are processed before children
+  // Group ONLY direct sub-branches (parent in main) by question. Nested sub-branches
+  // are picked up recursively by buildBranchNode — must not appear here too.
   const branchesByQuestion: Record<number, string[]> = {};
   const sortedBranchIds = Object.keys(byBranch)
     .filter((b) => b !== 'main')
@@ -58,20 +58,9 @@ function buildMindmapTree(
     if (!first?.branchFrom) continue;
     const parentMsg = map[first.branchFrom.parentMessageId];
     if (!parentMsg) continue;
+    if (parentMsg.branchId !== 'main') continue; // nested branch — handled recursively
 
-    let questionIdx: number;
-    if (parentMsg.branchId === 'main') {
-      questionIdx = msgIdToQuestionIdx[parentMsg.id] ?? -1;
-    } else {
-      questionIdx = -1;
-      for (const qIdx in branchesByQuestion) {
-        if ((branchesByQuestion[Number(qIdx)] ?? []).includes(parentMsg.branchId)) {
-          questionIdx = Number(qIdx);
-          break;
-        }
-      }
-    }
-    // Guard: skip entries with questionIdx === -1 (e.g., before first user message)
+    const questionIdx = msgIdToQuestionIdx[parentMsg.id] ?? -1;
     if (questionIdx >= 0) {
       (branchesByQuestion[questionIdx] ??= []).push(branchId);
     }

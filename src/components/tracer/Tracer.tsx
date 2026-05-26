@@ -49,8 +49,10 @@ function buildQuestionTree(
     }
   }
 
-  // Group sub-branches by the user question they belong to
-  // Sort branch IDs by createdAt so parents are processed before children
+  // Group ONLY direct sub-branches (parent in main) by the user question they belong to.
+  // Nested sub-branches (parent in another sub-branch) are picked up recursively by
+  // buildBranchNode below — they must NOT also appear here, or they'd be duplicated as
+  // direct children of the top-level Q node.
   const branchesByQuestion: Record<number, string[]> = {};
   const sortedBranchIds = Object.keys(byBranch)
     .filter((b) => b !== 'main')
@@ -61,23 +63,9 @@ function buildQuestionTree(
     if (!first?.branchFrom) continue;
     const parentMsg = map[first.branchFrom.parentMessageId];
     if (!parentMsg) continue;
+    if (parentMsg.branchId !== 'main') continue; // nested branch — handled recursively
 
-    let questionIdx: number;
-    if (parentMsg.branchId === 'main') {
-      questionIdx = msgIdToQuestionIdx[parentMsg.id] ?? -1;
-    } else {
-      // Parent is in a sub-branch; find which question that sub-branch belongs to
-      // Walk up: find the branch that contains parentMsg, then find its question
-      questionIdx = -1;
-      for (const qIdx in branchesByQuestion) {
-        const brs = branchesByQuestion[Number(qIdx)];
-        if (brs.includes(parentMsg.branchId)) {
-          questionIdx = Number(qIdx);
-          break;
-        }
-      }
-    }
-    // Guard: skip entries with questionIdx === -1 (e.g., before first user message)
+    const questionIdx = msgIdToQuestionIdx[parentMsg.id] ?? -1;
     if (questionIdx >= 0) {
       (branchesByQuestion[questionIdx] ??= []).push(branchId);
     }
