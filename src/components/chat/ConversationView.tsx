@@ -4,7 +4,7 @@ import { useMessageStore, selectMessagesOfBranch, selectBranchesUnder } from '@/
 import { useUiStore } from '@/lib/store/uiStore';
 import { sendMessage } from '@/lib/store/actions';
 import { Markdown } from './Markdown';
-import { SelectionPopover, useTextSelection } from './SelectionPopover';
+import { SelectionPopover, useTextSelection, type Selection } from './SelectionPopover';
 import { BranchBadge } from './BranchBadge';
 import type { Message } from '@/lib/types';
 
@@ -25,25 +25,13 @@ export function ConversationView({ topicId, branchId }: Props) {
   const selection = useTextSelection(containerRef);
   const setFocused = useUiStore((s) => s.setFocusedBranch);
 
-  const selectionMessageId = useMemo(() => {
-    if (!selection) return null;
-    const s = window.getSelection();
-    if (!s || s.rangeCount === 0) return null;
-    const node = s.anchorNode as Node | null;
-    if (!node) return null;
-    let el: HTMLElement | null =
-      node.nodeType === 1 ? (node as HTMLElement) : node.parentElement;
-    while (el && !el.dataset?.messageId) el = el.parentElement;
-    return el?.dataset.messageId ?? null;
-  }, [selection]);
-
-  function onAsk(text: string) {
-    if (!selectionMessageId) return;
+  function onAsk(snapshot: Selection) {
+    if (!snapshot.messageId) return;
     void sendMessage({
       topicId,
       branchId,
-      text: `请详细解释「${text}」`,
-      newBranch: { parentMessageId: selectionMessageId, selectedText: text },
+      text: `请详细解释「${snapshot.text}」`,
+      newBranch: { parentMessageId: snapshot.messageId, selectedText: snapshot.text },
     }).then(({ branchId: newId }) => {
       setFocused(newId);
     });
