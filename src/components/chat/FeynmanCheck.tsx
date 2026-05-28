@@ -11,11 +11,16 @@ interface Props {
 
 export function FeynmanCheck({ topic, topicId }: Props) {
   const saveResult = useFeynmanStore((s) => s.setResult);
-  const [open, setOpen] = useState(false);
+  const storedResult = useFeynmanStore((s) =>
+    topicId ? (s.results[topicId]?.[topic] ?? null) : null,
+  );
+  const [mode, setMode] = useState<'idle' | 'input' | 'result'>(
+    storedResult ? 'result' : 'idle',
+  );
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [raw, setRaw] = useState('');
-  const [result, setResult] = useState<GradeResult | null>(null);
+  const [result, setResult] = useState<GradeResult | null>(storedResult);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit() {
@@ -39,6 +44,7 @@ export function FeynmanCheck({ topic, topicId }: Props) {
         setError('无法解析评估结果，请重试。');
       } else {
         setResult(parsed);
+        setMode('result');
         if (topicId) {
           saveResult(topicId, topic, { ...parsed, testedAt: Date.now() });
         }
@@ -55,13 +61,14 @@ export function FeynmanCheck({ topic, topicId }: Props) {
     setRaw('');
     setError(null);
     setInput('');
+    setMode('input');
   }
 
-  if (!open) {
+  if (mode === 'idle') {
     return (
       <div className="border-t bg-green-50/50 px-4 py-2">
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => setMode('input')}
           className="flex w-full items-center justify-center gap-2 rounded-md border border-green-300 bg-white px-3 py-2 text-sm font-medium text-green-700 transition hover:bg-green-50"
         >
           <span>🧠</span>
@@ -78,14 +85,14 @@ export function FeynmanCheck({ topic, topicId }: Props) {
           费曼检验：「{topic}」
         </div>
         <button
-          onClick={() => setOpen(false)}
+          onClick={() => setMode('idle')}
           className="text-xs text-gray-500 hover:text-gray-700"
         >
           收起
         </button>
       </div>
 
-      {!result && (
+      {!result && mode === 'input' && (
         <>
           <textarea
             value={input}
@@ -120,9 +127,14 @@ export function FeynmanCheck({ topic, topicId }: Props) {
         </>
       )}
 
-      {result && (
+      {result && mode === 'result' && (
         <div className="space-y-3">
           <ScoreBar score={result.score} />
+          {storedResult?.testedAt && (
+            <div className="text-[10px] text-gray-400">
+              测试时间：{new Date(storedResult.testedAt).toLocaleString('zh-CN')}
+            </div>
+          )}
 
           {result.correct.length > 0 && (
             <Section
