@@ -3,7 +3,6 @@ import { useMemo, useState, useCallback } from 'react';
 import { useMessageStore } from '@/lib/store/messageStore';
 import { useUiStore } from '@/lib/store/uiStore';
 import type { Message } from '@/lib/types';
-import { FeynmanCheckSidebar } from '@/components/chat/FeynmanCheckSidebar';
 
 interface TracerNode {
   id: string;
@@ -173,9 +172,6 @@ export function Tracer({ topicId }: TracerProps) {
           </div>
         </>
       )}
-      <div className="mt-4 -mx-3 -mb-3">
-        <FeynmanCheckSidebar topicId={topicId} />
-      </div>
     </div>
   );
 }

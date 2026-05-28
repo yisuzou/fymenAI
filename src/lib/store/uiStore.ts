@@ -13,6 +13,8 @@ interface State {
   topicListCollapsed: boolean;
   /** Persisted width of the right panel (px). */
   rightPanelWidth: number;
+  /** Whether the Feynman check modal is open. */
+  feynmanModalOpen: boolean;
 }
 
 interface Actions {
@@ -22,6 +24,7 @@ interface Actions {
   setScrollTarget: (id: string | null) => void;
   setTopicListCollapsed: (collapsed: boolean) => void;
   setRightPanelWidth: (width: number) => void;
+  setFeynmanModalOpen: (open: boolean) => void;
 }
 
 export const useUiStore = create<State & Actions>()(
@@ -33,6 +36,7 @@ export const useUiStore = create<State & Actions>()(
       scrollTargetMessageId: null,
       topicListCollapsed: false,
       rightPanelWidth: 420,
+      feynmanModalOpen: false,
       setActiveTopic: (id) => set({ activeTopicId: id, focusedBranchId: 'main' }),
       toggleBranch: (branchId, open) =>
         set((s) => ({
@@ -45,6 +49,7 @@ export const useUiStore = create<State & Actions>()(
       setScrollTarget: (id) => set({ scrollTargetMessageId: id }),
       setTopicListCollapsed: (collapsed) => set({ topicListCollapsed: collapsed }),
       setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
+      setFeynmanModalOpen: (open) => set({ feynmanModalOpen: open }),
     }),
     { name: 'feynman.ui' },
   ),

@@ -6,6 +6,7 @@ import { useUiStore } from '@/lib/store/uiStore';
 import { ensureTopicAndSend, loadAllTopics, loadTopicMessages } from '@/lib/store/actions';
 import { ConversationView } from '@/components/chat/ConversationView';
 import { ChatInput } from '@/components/chat/ChatInput';
+import { FeynmanModal } from '@/components/chat/FeynmanModal';
 import { Tracer } from '@/components/tracer/Tracer';
 import { BranchFocusPanel } from '@/components/tracer/BranchFocusPanel';
 import { TopicList } from '@/components/tracer/TopicList';
@@ -13,6 +14,8 @@ import { TopicList } from '@/components/tracer/TopicList';
 export default function Page() {
   const activeTopicId = useUiStore((s) => s.activeTopicId);
   const setActiveTopic = useUiStore((s) => s.setActiveTopic);
+  const feynmanModalOpen = useUiStore((s) => s.feynmanModalOpen);
+  const setFeynmanModalOpen = useUiStore((s) => s.setFeynmanModalOpen);
   const streamingId = useMessageStore((s) => s.streamingMessageId);
   const topicsLoaded = useTopicStore((s) => s.loaded);
   const topicsOrder = useTopicStore((s) => s.order);
@@ -100,6 +103,17 @@ export default function Page() {
             <div className="px-2 py-4 text-xs text-gray-400">选择或创建一个主题后开始。</div>
           )}
         </div>
+        {activeTopicId && (
+          <div className="border-t p-3">
+            <button
+              onClick={() => setFeynmanModalOpen(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2.5 text-sm font-medium text-green-700 transition hover:bg-green-100"
+            >
+              <span>🧠</span>
+              <span>费曼检验</span>
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* CENTER: main conversation with inline branches */}
@@ -158,6 +172,7 @@ export default function Page() {
           </div>
         )}
       </aside>
+      {feynmanModalOpen && activeTopicId && <FeynmanModal topicId={activeTopicId} />}
     </main>
   );
 }
