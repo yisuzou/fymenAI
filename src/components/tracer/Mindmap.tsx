@@ -111,7 +111,6 @@ function buildMindmapTree(
     const mainAiMsg = mainMsgs.find(
       (m) => m.role === 'assistant' && m.createdAt > msg.createdAt,
     );
-    const nextUser = userMsgs[idx + 1];
     const aiSummary = mainAiMsg
       ? mainAiMsg.content.length > 60
         ? mainAiMsg.content.slice(0, 60) + '…'

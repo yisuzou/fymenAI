@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { it, expect } from 'vitest';
 import { createMockProvider } from '@/lib/llm/mock';
 
 it('mock provider streams chunks', async () => {

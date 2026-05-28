@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Feynman AI (费曼 AI)
 
-## Getting Started
+> 用提问追溯理解，用复述验证掌握。
 
-First, run the development server:
+一个基于费曼学习法的 AI 辅助学习工具。不是向 AI 学习，而是和 AI 一起学习。
+
+## ✨ 核心功能
+
+- **对话式学习**：向 AI 提问，获得费曼式讲解（简单类比 + 易混淆点）
+- **分支追问**：框选 AI 回复中的任意文本，创建追问分支深入探索
+- **提问 Tracer**：左侧树状导航，每个问题自动编号（Q1, Q1.1, Q1.1.1...）
+- **知识图谱**：右侧思维导图视图，可视化提问结构和学习路径
+- **费曼检验**：用自己的话复述概念，AI 评分并给出反馈（正确/缺失/错误）
+
+## 🚀 快速开始
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+# 安装依赖
+pnpm install
+
+# 配置环境变量
+cp .env.example .env.local
+# 编辑 .env.local，填入 API Key
+
+# 启动开发服务器
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+访问 [http://localhost:3456](http://localhost:3456)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## ⚙️ 环境变量
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+# OpenAI 兼容 API（支持 MiMo、OpenAI 等）
+OPENAI_API_KEY=your-api-key
+OPENAI_BASE_URL=https://api.xiaomimimo.com/v1  # 可选，默认 OpenAI
+LLM_MODEL=mimo-v2.5-pro
 
-## Learn More
+# 或使用 Anthropic
+# ANTHROPIC_API_KEY=your-key
+# LLM_PROVIDER=anthropic
 
-To learn more about Next.js, take a look at the following resources:
+# 数据库
+DB_PATH=./data/feynman.db
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🏗️ 技术栈
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **框架**：Next.js 14 (App Router) + TypeScript
+- **状态管理**：Zustand（持久化到 localStorage）
+- **数据库**：SQLite (better-sqlite3)
+- **LLM**：OpenAI 兼容 API / Anthropic（流式输出）
+- **UI**：Tailwind CSS + react-markdown
 
-## Deploy on Vercel
+## 📁 项目结构
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── chat/route.ts         # 流式 LLM 端点
+│   │   ├── topics/               # 主题 CRUD
+│   │   └── messages/             # 消息 CRUD
+│   ├── layout.tsx
+│   └── page.tsx                  # 三栏主布局
+├── components/
+│   ├── chat/
+│   │   ├── ConversationView.tsx   # 对话流 + 框选追问
+│   │   ├── FeynmanCheck.tsx       # 费曼检验组件
+│   │   ├── FeynmanModal.tsx       # 费曼检验浮窗
+│   │   ├── Markdown.tsx           # 富文本渲染
+│   │   └── SelectionPopover.tsx   # 文本选中弹出
+│   └── tracer/
+│       ├── Tracer.tsx             # 提问树导航
+│       ├── Mindmap.tsx            # 知识图谱视图
+│       ├── TopicList.tsx          # 主题列表
+│       └── BranchFocusPanel.tsx   # 分支焦点面板
+├── lib/
+│   ├── llm/                      # LLM 抽象层
+│   ├── db/                       # SQLite 数据层
+│   ├── store/                    # Zustand stores
+│   └── utils/                    # 工具函数
+└── tests/
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🧪 测试
+
+```bash
+pnpm test:run    # 运行所有测试
+pnpm test        # 监听模式
+```
+
+## 📦 构建
+
+```bash
+pnpm build       # 生产构建
+pnpm start       # 启动生产服务器
+```
+
+## 📝 License
+
+MIT

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { it, expect, vi } from 'vitest';
 vi.mock('@/lib/llm', () => ({
   getProvider: () => ({
     async *chatStream() { yield 'A'; yield 'B'; },
@@ -11,7 +11,7 @@ it('streams text', async () => {
     method: 'POST',
     body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
   });
-  const res = await POST(req as any);
+  const res = await POST(req as unknown as import('next/server').NextRequest);
   const text = await res.text();
   expect(text).toContain('A');
   expect(text).toContain('B');
