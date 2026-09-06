@@ -1,12 +1,12 @@
 'use client';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useMessageStore, selectMessagesOfBranch, selectBranchesUnder } from '@/lib/store/messageStore';
 import { useUiStore } from '@/lib/store/uiStore';
 import { sendMessage } from '@/lib/store/actions';
 import { Markdown } from './Markdown';
 import { SelectionPopover, useTextSelection, type Selection } from './SelectionPopover';
 import { BranchBadge } from './BranchBadge';
-import type { Message } from '@/lib/types';
 
 interface Props {
   topicId: string;
@@ -14,12 +14,13 @@ interface Props {
 }
 
 export function ConversationView({ topicId, branchId }: Props) {
-  const byTopic = useMessageStore((s) => s.byTopic);
-  const streamingId = useMessageStore((s) => s.streamingMessageId);
-  const messages = useMemo(
-    () => selectMessagesOfBranch(byTopic, topicId, branchId),
-    [byTopic, topicId, branchId],
+  // Subscribe to the ID LIST only. Subscribing to the whole `byTopic` map meant
+  // every streamed token re-rendered every message in the branch; now the list
+  // is shallow-compared and only the message that changed re-renders itself.
+  const messageIds = useMessageStore(
+    useShallow((s) => selectMessagesOfBranch(s.byTopic, topicId, branchId).map((m) => m.id)),
   );
+  const hydrated = useMessageStore((s) => !!s.hydratedTopics[topicId]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const selection = useTextSelection(containerRef);
@@ -53,30 +54,44 @@ export function ConversationView({ topicId, branchId }: Props) {
 
   return (
     <div ref={containerRef} className="flex w-full min-w-0 flex-col gap-3">
-      {messages.map((m) => (
-        <MessageNode key={m.id} message={m} topicId={topicId} streamingId={streamingId} />
+      {messageIds.map((id) => (
+        <MessageNode key={id} messageId={id} topicId={topicId} />
       ))}
-      {messages.length === 0 && (
-        <div className="rounded border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
-          开始一个新的提问吧。AI 回复后，框选任意文本即可创建追问分支。
-        </div>
-      )}
+      {messageIds.length === 0 &&
+        (hydrated ? (
+          <div className="rounded border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+            开始一个新的提问吧。AI 回复后，框选任意文本即可创建追问分支。
+          </div>
+        ) : (
+          <MessageSkeleton />
+        ))}
       <SelectionPopover selection={selection} onAsk={onAsk} />
     </div>
   );
 }
 
-interface NodeProps {
-  message: Message;
-  topicId: string;
-  streamingId: string | null;
+/** Shown while a topic's messages are still loading, so an in-flight fetch is
+ *  not mistaken for an empty conversation. */
+function MessageSkeleton() {
+  return (
+    <div className="flex flex-col gap-3" aria-hidden>
+      <div className="self-end h-9 w-2/5 animate-pulse rounded-lg bg-blue-50" />
+      <div className="h-24 w-4/5 animate-pulse rounded-lg border border-gray-100 bg-gray-50" />
+      <div className="self-end h-9 w-1/3 animate-pulse rounded-lg bg-blue-50" />
+    </div>
+  );
 }
 
-function MessageNode({ message, topicId, streamingId }: NodeProps) {
-  const byTopic = useMessageStore((s) => s.byTopic);
-  const branches = useMemo(
-    () => selectBranchesUnder(byTopic, topicId, message.id),
-    [byTopic, topicId, message.id],
+interface NodeProps {
+  messageId: string;
+  topicId: string;
+}
+
+function MessageNode({ messageId, topicId }: NodeProps) {
+  const message = useMessageStore((s) => s.byTopic[topicId]?.[messageId]);
+  const isStreaming = useMessageStore((s) => s.streamingMessageId === messageId);
+  const branches = useMessageStore(
+    useShallow((s) => selectBranchesUnder(s.byTopic, topicId, messageId)),
   );
 
   const scrollTarget = useUiStore((s) => s.scrollTargetMessageId);
@@ -84,12 +99,13 @@ function MessageNode({ message, topicId, streamingId }: NodeProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (scrollTarget === message.id && ref.current) {
+    if (scrollTarget === messageId && ref.current) {
       ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setScrollTarget(null);
     }
-  }, [scrollTarget, message.id, setScrollTarget]);
+  }, [scrollTarget, messageId, setScrollTarget]);
 
+  if (!message) return null;
   const isAssistant = message.role === 'assistant';
   const isUser = message.role === 'user';
 
@@ -109,7 +125,7 @@ function MessageNode({ message, topicId, streamingId }: NodeProps) {
         ) : (
           <p className="whitespace-pre-wrap break-words text-sm">{message.content}</p>
         )}
-        {streamingId === message.id && (
+        {isStreaming && (
           <span className="ml-1 inline-block h-3 w-2 animate-pulse bg-gray-400" />
         )}
       </div>

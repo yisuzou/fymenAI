@@ -1,24 +1,30 @@
 'use client';
 import { useTopicStore } from '@/lib/store/topicStore';
 import { useUiStore } from '@/lib/store/uiStore';
-import { createTopic, deleteTopic, loadTopicMessages } from '@/lib/store/actions';
+import { createTopic, deleteTopic } from '@/lib/store/actions';
+import { DEFAULT_TOPIC_TITLE } from '@/lib/constants';
 
 export function TopicList() {
   const order = useTopicStore((s) => s.order);
   const topics = useTopicStore((s) => s.topics);
   const activeTopicId = useUiStore((s) => s.activeTopicId);
   const setActiveTopic = useUiStore((s) => s.setActiveTopic);
+  const setMobilePane = useUiStore((s) => s.setMobilePane);
   const collapsed = useUiStore((s) => s.topicListCollapsed);
   const setCollapsed = useUiStore((s) => s.setTopicListCollapsed);
 
   async function onNew() {
-    const t = await createTopic('新主题');
+    const t = await createTopic(DEFAULT_TOPIC_TITLE);
     setActiveTopic(t.id);
+    setMobilePane('chat');
   }
 
-  async function onSelect(id: string) {
+  // No explicit load here: the page loads a topic's messages once, when it
+  // becomes active and is not already hydrated. Re-fetching on every click
+  // could replace a message that was still streaming.
+  function onSelect(id: string) {
     setActiveTopic(id);
-    await loadTopicMessages(id);
+    setMobilePane('chat');
   }
 
   return (

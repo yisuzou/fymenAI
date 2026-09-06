@@ -115,6 +115,82 @@ export function deleteMessage(id: string) {
   getDb().prepare(`DELETE FROM messages WHERE id = ?`).run(id);
 }
 
+/**
+ * Delete a message and everything that depends on it, in one transaction.
+ *
+ * A plain `DELETE FROM messages WHERE id = ?` orphaned data: later messages in
+ * the same branch lost the turn they answered, and every follow-up branch
+ * anchored to the deleted message still pointed at a row that no longer
+ * existed — those branches then vanished from the tree while their rows stayed
+ * in the database forever.
+ *
+ * Doomed set:
+ *   1. the target message,
+ *   2. every later message in the same branch (they continue the same thread),
+ *   3. recursively, every branch anchored to any doomed message, in full.
+ *
+ * Returns the deleted ids so a client can prune its own cache.
+ */
+export function deleteMessageCascade(id: string): string[] {
+  const db = getDb();
+  const target = getMessage(id);
+  if (!target) return [];
+  const topicId = target.topicId;
+
+  const tailStmt = db.prepare(
+    `SELECT id FROM messages
+     WHERE topic_id = ? AND branch_id = ? AND (created_at > ? OR id = ?)`,
+  );
+  const branchesFromStmt = db.prepare(
+    `SELECT branch_id as branchId FROM messages
+     WHERE topic_id = ? AND branch_from_parent_id = ?`,
+  );
+  const branchMessagesStmt = db.prepare(
+    `SELECT id FROM messages WHERE topic_id = ? AND branch_id = ?`,
+  );
+  const deleteStmt = db.prepare(`DELETE FROM messages WHERE id = ?`);
+
+  const run = db.transaction((): string[] => {
+    const doomed = new Set<string>();
+    const seenBranches = new Set<string>();
+    const queue: string[] = [];
+
+    for (const r of tailStmt.all(topicId, target.branchId, target.createdAt, target.id) as {
+      id: string;
+    }[]) {
+      if (!doomed.has(r.id)) {
+        doomed.add(r.id);
+        queue.push(r.id);
+      }
+    }
+
+    while (queue.length) {
+      const messageId = queue.pop()!;
+      for (const b of branchesFromStmt.all(topicId, messageId) as { branchId: string }[]) {
+        if (seenBranches.has(b.branchId)) continue;
+        seenBranches.add(b.branchId);
+        for (const r of branchMessagesStmt.all(topicId, b.branchId) as { id: string }[]) {
+          if (!doomed.has(r.id)) {
+            doomed.add(r.id);
+            queue.push(r.id);
+          }
+        }
+      }
+    }
+
+    for (const messageId of doomed) deleteStmt.run(messageId);
+
+    // The topic's root pointer must not survive its target.
+    const topic = getTopic(topicId);
+    if (topic?.rootMessageId && doomed.has(topic.rootMessageId)) {
+      db.prepare(`UPDATE topics SET root_message_id = NULL WHERE id = ?`).run(topicId);
+    }
+    return [...doomed];
+  });
+
+  return run();
+}
+
 export function listMessagesByTopic(topicId: string): Message[] {
   const rows = getDb().prepare(
     `SELECT ${MSG_COLS} FROM messages WHERE topic_id = ? ORDER BY created_at ASC`

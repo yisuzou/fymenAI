@@ -1,5 +1,4 @@
 'use client';
-import { useMemo } from 'react';
 import { useMessageStore, selectMessagesOfBranch } from '@/lib/store/messageStore';
 import { useUiStore } from '@/lib/store/uiStore';
 import type { Message } from '@/lib/types';
@@ -16,14 +15,16 @@ interface Props {
  */
 export function BranchBadge({ topicId, firstMessage }: Props) {
   const branchId = firstMessage.branchId;
-  const byTopic = useMessageStore((s) => s.byTopic);
+  // Just the reply count, so streaming tokens elsewhere don't re-render badges.
+  const count = useMessageStore(
+    (s) =>
+      selectMessagesOfBranch(s.byTopic, topicId, branchId).filter(
+        (m) => m.role === 'assistant',
+      ).length,
+  );
   const focused = useUiStore((s) => s.focusedBranchId);
   const setFocused = useUiStore((s) => s.setFocusedBranch);
-
-  const count = useMemo(() => {
-    const msgs = selectMessagesOfBranch(byTopic, topicId, branchId);
-    return msgs.filter((m) => m.role === 'assistant').length;
-  }, [byTopic, topicId, branchId]);
+  const setMobilePane = useUiStore((s) => s.setMobilePane);
 
   const isFocused = focused === branchId;
   const label = firstMessage.branchFrom?.selectedText ?? '分支';
@@ -31,7 +32,10 @@ export function BranchBadge({ topicId, firstMessage }: Props) {
   return (
     <button
       type="button"
-      onClick={() => setFocused(branchId)}
+      onClick={() => {
+        setFocused(branchId);
+        setMobilePane('focus');
+      }}
       title={`聚焦此分支：${label}`}
       className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition ${
         isFocused

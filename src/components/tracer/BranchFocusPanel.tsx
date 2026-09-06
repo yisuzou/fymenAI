@@ -1,11 +1,12 @@
 'use client';
-import { useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useMessageStore, selectMessagesOfBranch } from '@/lib/store/messageStore';
 import { useUiStore } from '@/lib/store/uiStore';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { ConversationView } from '@/components/chat/ConversationView';
 import { Mindmap } from '@/components/tracer/Mindmap';
-import { sendMessage } from '@/lib/store/actions';
+import { sendMessage, stopStreaming } from '@/lib/store/actions';
+import { TITLE_MAX_CHARS } from '@/lib/constants';
 
 interface Props {
   topicId: string;
@@ -14,11 +15,13 @@ interface Props {
 export function BranchFocusPanel({ topicId }: Props) {
   const branchId = useUiStore((s) => s.focusedBranchId);
   const setFocusedBranch = useUiStore((s) => s.setFocusedBranch);
-  const byTopic = useMessageStore((s) => s.byTopic);
   const streamingId = useMessageStore((s) => s.streamingMessageId);
-  const messages = useMemo(
-    () => (branchId === 'main' ? [] : selectMessagesOfBranch(byTopic, topicId, branchId)),
-    [byTopic, topicId, branchId],
+  // Only this branch's messages, shallow-compared: a token streamed into any
+  // other branch no longer re-renders this panel.
+  const messages = useMessageStore(
+    useShallow((s) =>
+      branchId === 'main' ? [] : selectMessagesOfBranch(s.byTopic, topicId, branchId),
+    ),
   );
 
   const first = messages[0];
@@ -26,11 +29,7 @@ export function BranchFocusPanel({ topicId }: Props) {
   const title = isMain ? '知识图谱' : first?.branchFrom?.selectedText ?? '分支';
 
   function handleSend(text: string) {
-    if (isMain) {
-      void sendMessage({ topicId, branchId, text });
-      return;
-    }
-    if (!first) {
+    if (isMain || !first) {
       void sendMessage({ topicId, branchId, text });
       return;
     }
@@ -38,13 +37,12 @@ export function BranchFocusPanel({ topicId }: Props) {
     // Use the parent's branchId so the new message lives in the parent branch,
     // and parentMessageId points to this branch's first message so the Tracer
     // places it as a sibling (e.g., Q1.2 next to Q1.1 under Q1).
+    const byTopic = useMessageStore.getState().byTopic;
     const parentBranchId = first.branchFrom
-      ? (() => {
-          const parentMsg = byTopic[topicId]?.[first.branchFrom.parentMessageId];
-          return parentMsg?.branchId ?? 'main';
-        })()
+      ? byTopic[topicId]?.[first.branchFrom.parentMessageId]?.branchId ?? 'main'
       : 'main';
-    const selectedText = text.length > 24 ? text.slice(0, 24) + '…' : text;
+    const selectedText =
+      text.length > TITLE_MAX_CHARS ? text.slice(0, TITLE_MAX_CHARS) + '…' : text;
     void sendMessage({
       topicId,
       branchId: parentBranchId,
@@ -82,6 +80,8 @@ export function BranchFocusPanel({ topicId }: Props) {
         size="sm"
         placeholder={isMain ? '继续主对话…' : '在此焦点分支继续追问…'}
         disabled={!!streamingId}
+        streaming={!!streamingId}
+        onStop={() => stopStreaming()}
         onSend={handleSend}
       />
     </div>
