@@ -53,6 +53,19 @@ const MIGRATIONS: { version: number; up: (db: Database.Database) => void }[] = [
           ON messages(topic_id, branch_from_parent_id);
       `),
   },
+  {
+    version: 3,
+    // Runtime LLM configuration set from the UI. Key-value rather than a
+    // fixed-column row so a new setting does not need a new migration.
+    up: (db) =>
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key        TEXT PRIMARY KEY,
+          value      TEXT NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `),
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

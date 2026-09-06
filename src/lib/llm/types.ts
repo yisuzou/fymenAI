@@ -7,6 +7,11 @@ export interface LLMOptions {
    * needs a parseable object rather than prose wrapped around one.
    */
   json?: boolean;
+  /**
+   * Cancels the underlying HTTP request. Without this a timeout could only stop
+   * waiting, leaving the request itself running.
+   */
+  signal?: AbortSignal;
 }
 
 export interface LLMProvider {

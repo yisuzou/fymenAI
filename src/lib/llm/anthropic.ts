@@ -1,10 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { LLMProvider, LLMMessage, LLMOptions } from './types';
+import type { LlmConfig } from './config';
 
-export function createAnthropicProvider(): LLMProvider {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const model = process.env.LLM_MODEL ?? 'claude-3-5-sonnet-latest';
-  const maxTokens = Number(process.env.LLM_MAX_TOKENS ?? 2048);
+export function createAnthropicProvider(cfg: LlmConfig): LLMProvider {
+  const client = new Anthropic({ apiKey: cfg.apiKey ?? undefined });
   return {
     async *chatStream(messages: LLMMessage[], opts: LLMOptions = {}) {
       const system = messages
@@ -25,13 +24,16 @@ export function createAnthropicProvider(): LLMProvider {
         : rest;
       if (opts.json) yield '{';
 
-      const stream = client.messages.stream({
-        model,
-        max_tokens: maxTokens,
-        system,
-        messages: outbound,
-        temperature: opts.temperature ?? 0.7,
-      });
+      const stream = client.messages.stream(
+        {
+          model: cfg.model,
+          max_tokens: cfg.maxTokens,
+          system,
+          messages: outbound,
+          temperature: opts.temperature ?? 0.7,
+        },
+        { signal: opts.signal },
+      );
       for await (const ev of stream) {
         if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
           yield ev.delta.text;

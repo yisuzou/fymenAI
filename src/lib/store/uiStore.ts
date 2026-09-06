@@ -15,6 +15,8 @@ interface State {
   rightPanelWidth: number;
   /** Whether the Feynman check modal is open. */
   feynmanModalOpen: boolean;
+  /** Whether the API settings modal is open. */
+  settingsOpen: boolean;
   /**
    * Which single pane is visible below the `lg` breakpoint. Above it, all three
    * columns show and this is ignored — the switch is pure CSS, so there is no
@@ -37,6 +39,7 @@ interface Actions {
   setTopicListCollapsed: (collapsed: boolean) => void;
   setRightPanelWidth: (width: number) => void;
   setFeynmanModalOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean) => void;
   setMobilePane: (pane: 'tree' | 'chat' | 'focus') => void;
   setLastError: (message: string | null) => void;
 }
@@ -51,6 +54,7 @@ export const useUiStore = create<State & Actions>()(
       topicListCollapsed: false,
       rightPanelWidth: 420,
       feynmanModalOpen: false,
+      settingsOpen: false,
       mobilePane: 'chat',
       lastError: null,
       setActiveTopic: (id) => set({ activeTopicId: id, focusedBranchId: 'main' }),
@@ -66,6 +70,7 @@ export const useUiStore = create<State & Actions>()(
       setTopicListCollapsed: (collapsed) => set({ topicListCollapsed: collapsed }),
       setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
       setFeynmanModalOpen: (open) => set({ feynmanModalOpen: open }),
+      setSettingsOpen: (open) => set({ settingsOpen: open }),
       setMobilePane: (pane) => set({ mobilePane: pane }),
       setLastError: (message) => set({ lastError: message }),
     }),

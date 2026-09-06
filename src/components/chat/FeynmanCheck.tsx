@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { streamEvents, ApiRequestError } from '@/lib/api/stream';
+import { authHeaders } from '@/lib/api/client';
 import { parseGrade, type GradeResult } from '@/lib/utils/grader';
 import { useFeynmanStore, pickResult } from '@/lib/store/feynmanStore';
 
@@ -45,7 +46,7 @@ export function FeynmanCheck({ topic, topicId, nodeKey }: Props) {
       for await (const ev of streamEvents(
         '/api/chat',
         { mode: 'grade', messages: [{ role: 'user', content: userMessage }] },
-        { signal: controller.signal },
+        { signal: controller.signal, headers: authHeaders() },
       )) {
         if (ev.t === 'delta') {
           acc += ev.v;

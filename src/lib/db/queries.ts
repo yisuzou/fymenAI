@@ -202,3 +202,41 @@ export function getMessage(id: string): Message | null {
   const r = getDb().prepare(`SELECT ${MSG_COLS} FROM messages WHERE id = ?`).get(id) as RawMessage | undefined;
   return r ? rowToMessage(r) : null;
 }
+
+/* ------------------------------------------------------------------ settings */
+
+/**
+ * Runtime configuration written from the settings UI.
+ *
+ * An absent row and an empty value mean the same thing — "no override, fall
+ * back to the environment" — so `setSetting(key, '')` deletes instead of
+ * storing a blank that would shadow a real env var.
+ */
+export function getSetting(key: string): string | null {
+  const r = getDb().prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
+    | { value: string }
+    | undefined;
+  return r?.value ?? null;
+}
+
+export function setSetting(key: string, value: string): void {
+  if (value === '') return deleteSetting(key);
+  getDb()
+    .prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    )
+    .run(key, value, Date.now());
+}
+
+export function deleteSetting(key: string): void {
+  getDb().prepare(`DELETE FROM settings WHERE key = ?`).run(key);
+}
+
+export function getAllSettings(): Record<string, string> {
+  const rows = getDb().prepare(`SELECT key, value FROM settings`).all() as {
+    key: string;
+    value: string;
+  }[];
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}

@@ -15,6 +15,7 @@ import { FeynmanModal } from '@/components/chat/FeynmanModal';
 import { Tracer } from '@/components/tracer/Tracer';
 import { BranchFocusPanel } from '@/components/tracer/BranchFocusPanel';
 import { TopicList } from '@/components/tracer/TopicList';
+import { SettingsModal } from '@/components/settings/SettingsModal';
 
 const TABS = [
   { id: 'tree', label: '树', icon: '🌳' },
@@ -29,6 +30,7 @@ export default function Page() {
   const setFeynmanModalOpen = useUiStore((s) => s.setFeynmanModalOpen);
   const mobilePane = useUiStore((s) => s.mobilePane);
   const setMobilePane = useUiStore((s) => s.setMobilePane);
+  const settingsOpen = useUiStore((s) => s.settingsOpen);
   const lastError = useUiStore((s) => s.lastError);
   const setLastError = useUiStore((s) => s.setLastError);
   const streamingId = useMessageStore((s) => s.streamingMessageId);
@@ -249,6 +251,7 @@ export default function Page() {
       </nav>
 
       {feynmanModalOpen && activeTopicId && <FeynmanModal topicId={activeTopicId} />}
+      {settingsOpen && <SettingsModal />}
     </main>
   );
 }

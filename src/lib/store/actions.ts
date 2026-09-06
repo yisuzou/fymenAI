@@ -3,6 +3,7 @@ import { useTopicStore } from './topicStore';
 import { useMessageStore, selectMessagesOfBranch } from './messageStore';
 import { useUiStore } from './uiStore';
 import { streamEvents, ApiRequestError } from '@/lib/api/stream';
+import { apiFetch, authHeaders } from '@/lib/api/client';
 import { DEFAULT_TOPIC_TITLE, TITLE_MAX_CHARS } from '@/lib/constants';
 import type { Message, Topic, BranchInfo } from '@/lib/types';
 
@@ -36,7 +37,7 @@ async function ensureOk(res: Response, what: string): Promise<Response> {
 /** Fetch all topics, then load messages of the active one. */
 export async function loadAllTopics(): Promise<Topic[]> {
   try {
-    const res = await ensureOk(await fetch('/api/topics'), '加载主题列表');
+    const res = await ensureOk(await apiFetch('/api/topics'), '加载主题列表');
     const topics = (await res.json()) as Topic[];
     useTopicStore.getState().hydrate(topics);
     return topics;
@@ -48,7 +49,7 @@ export async function loadAllTopics(): Promise<Topic[]> {
 
 export async function loadTopicMessages(topicId: string): Promise<Message[]> {
   try {
-    const res = await ensureOk(await fetch(`/api/topics/${topicId}`), '加载对话');
+    const res = await ensureOk(await apiFetch(`/api/topics/${topicId}`), '加载对话');
     const data = (await res.json()) as { topic: Topic; messages: Message[] };
     useMessageStore.getState().hydrateTopic(topicId, data.messages);
     useTopicStore.getState().upsert(data.topic);
@@ -63,7 +64,7 @@ export async function loadTopicMessages(topicId: string): Promise<Message[]> {
 
 export async function createTopic(title: string): Promise<Topic> {
   const res = await ensureOk(
-    await fetch('/api/topics', {
+    await apiFetch('/api/topics', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
@@ -78,7 +79,7 @@ export async function createTopic(title: string): Promise<Topic> {
 
 export async function deleteTopic(topicId: string) {
   try {
-    await ensureOk(await fetch(`/api/topics/${topicId}`, { method: 'DELETE' }), '删除主题');
+    await ensureOk(await apiFetch(`/api/topics/${topicId}`, { method: 'DELETE' }), '删除主题');
   } catch (e) {
     reportError(e, '删除主题失败。');
     return;
@@ -90,7 +91,7 @@ export async function deleteTopic(topicId: string) {
 
 async function persistMessage(m: Message, setAsRoot = false) {
   await ensureOk(
-    await fetch('/api/messages', {
+    await apiFetch('/api/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...m, setAsRoot }),
@@ -101,7 +102,7 @@ async function persistMessage(m: Message, setAsRoot = false) {
 
 async function persistMessageContent(id: string, content: string) {
   await ensureOk(
-    await fetch(`/api/messages/${id}`, {
+    await apiFetch(`/api/messages/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
@@ -286,7 +287,7 @@ export async function sendMessage(opts: SendOpts): Promise<{ branchId: string; a
         selectedText: ctx.selectedText ?? undefined,
         parentContext: ctx.parentContext || undefined,
       },
-      { signal: controller.signal },
+      { signal: controller.signal, headers: authHeaders() },
     )) {
       if (ev.t === 'delta') {
         ms.appendChunk(topicId, assistantId, ev.v);
@@ -336,7 +337,7 @@ export async function ensureTopicAndSend(text: string): Promise<string | null> {
     const existing = useTopicStore.getState().topics[topicId];
     if (existing && existing.title === DEFAULT_TOPIC_TITLE) {
       useTopicStore.getState().rename(topicId, derivedTitle);
-      void fetch(`/api/topics/${topicId}`, {
+      void apiFetch(`/api/topics/${topicId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: derivedTitle }),
