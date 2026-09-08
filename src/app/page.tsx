@@ -3,19 +3,36 @@ import { useEffect, useCallback, useRef } from 'react';
 import { useTopicStore } from '@/lib/store/topicStore';
 import { useMessageStore } from '@/lib/store/messageStore';
 import { useUiStore } from '@/lib/store/uiStore';
-import { ensureTopicAndSend, loadAllTopics, loadTopicMessages } from '@/lib/store/actions';
+import {
+  ensureTopicAndSend,
+  loadAllTopics,
+  loadTopicMessages,
+  stopStreaming,
+} from '@/lib/store/actions';
 import { ConversationView } from '@/components/chat/ConversationView';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { FeynmanModal } from '@/components/chat/FeynmanModal';
 import { Tracer } from '@/components/tracer/Tracer';
 import { BranchFocusPanel } from '@/components/tracer/BranchFocusPanel';
 import { TopicList } from '@/components/tracer/TopicList';
+import { SettingsModal } from '@/components/settings/SettingsModal';
+
+const TABS = [
+  { id: 'tree', label: '树', icon: '🌳' },
+  { id: 'chat', label: '对话', icon: '💬' },
+  { id: 'focus', label: '焦点', icon: '🔍' },
+] as const;
 
 export default function Page() {
   const activeTopicId = useUiStore((s) => s.activeTopicId);
   const setActiveTopic = useUiStore((s) => s.setActiveTopic);
   const feynmanModalOpen = useUiStore((s) => s.feynmanModalOpen);
   const setFeynmanModalOpen = useUiStore((s) => s.setFeynmanModalOpen);
+  const mobilePane = useUiStore((s) => s.mobilePane);
+  const setMobilePane = useUiStore((s) => s.setMobilePane);
+  const settingsOpen = useUiStore((s) => s.settingsOpen);
+  const lastError = useUiStore((s) => s.lastError);
+  const setLastError = useUiStore((s) => s.setLastError);
   const streamingId = useMessageStore((s) => s.streamingMessageId);
   const topicsLoaded = useTopicStore((s) => s.loaded);
   const topicsOrder = useTopicStore((s) => s.order);
@@ -26,13 +43,15 @@ export default function Page() {
   const setRightWidth = useUiStore((s) => s.setRightPanelWidth);
   const rightWidthRef = useRef(420);
   // Keep rightWidthRef in sync
-  useEffect(() => { rightWidthRef.current = rightWidth; }, [rightWidth]);
+  useEffect(() => {
+    rightWidthRef.current = rightWidth;
+  }, [rightWidth]);
 
   const isDragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
 
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     isDragging.current = true;
     startX.current = e.clientX;
@@ -42,61 +61,74 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    function onMouseMove(e: MouseEvent) {
+    function onPointerMove(e: PointerEvent) {
       if (!isDragging.current) return;
       const delta = startX.current - e.clientX;
-      const newWidth = Math.min(800, Math.max(280, startWidth.current + delta));
-      setRightWidth(newWidth);
+      setRightWidth(Math.min(800, Math.max(280, startWidth.current + delta)));
     }
-    function onMouseUp() {
-      if (isDragging.current) {
-        isDragging.current = false;
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      }
+    function onPointerUp() {
+      if (!isDragging.current) return;
+      isDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     }
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
     return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
     };
+  }, [setRightWidth]);
+
+  // 1. Load the topic list once.
+  useEffect(() => {
+    void loadAllTopics();
   }, []);
 
-  // Initial: load all topics, then load messages for active (or first) topic
+  // 2. Once topics are known, make sure the active one actually exists.
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const list = await loadAllTopics();
-      if (cancelled) return;
-      const wanted = activeTopicId && list.find((t) => t.id === activeTopicId)
-        ? activeTopicId
-        : list[0]?.id ?? null;
-      if (wanted !== activeTopicId) setActiveTopic(wanted);
-      if (wanted) await loadTopicMessages(wanted);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // run once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!topicsLoaded) return;
+    if (activeTopicId && topics[activeTopicId]) return;
+    setActiveTopic(topicsOrder[0] ?? null);
+  }, [topicsLoaded, activeTopicId, topics, topicsOrder, setActiveTopic]);
 
-  // Whenever active topic changes, ensure its messages are loaded.
+  // 3. Load messages for the active topic, exactly once per topic.
+  //    Previously both this effect and the bootstrap above fetched the same
+  //    topic on first paint, and re-fetching a hydrated topic could replace an
+  //    optimistic message that was still streaming.
   useEffect(() => {
-    if (activeTopicId) void loadTopicMessages(activeTopicId);
-  }, [activeTopicId]);
+    if (!topicsLoaded || !activeTopicId) return;
+    if (!useTopicStore.getState().topics[activeTopicId]) return;
+    if (useMessageStore.getState().hydratedTopics[activeTopicId]) return;
+    void loadTopicMessages(activeTopicId);
+  }, [topicsLoaded, activeTopicId]);
 
   const topic = activeTopicId ? topics[activeTopicId] : null;
+  const paneClass = (id: (typeof TABS)[number]['id']) =>
+    mobilePane === id ? 'flex' : 'hidden lg:flex';
 
   return (
-    <main className="flex h-screen w-screen overflow-hidden bg-gray-50">
+    <main className="flex h-dvh w-full flex-col bg-gray-50 lg:flex-row lg:overflow-hidden">
+      {lastError && (
+        <div
+          role="alert"
+          className="flex shrink-0 items-start gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800 lg:hidden"
+        >
+          <span className="min-w-0 flex-1">{lastError}</span>
+          <button onClick={() => setLastError(null)} className="text-red-500 hover:text-red-700">
+            关闭
+          </button>
+        </div>
+      )}
+
       {/* LEFT: Tracer + topic list */}
-      <aside className="flex h-full w-72 flex-col border-r bg-white">
+      <aside
+        className={`min-h-0 w-full flex-1 flex-col border-r bg-white lg:h-full lg:w-72 lg:flex-none ${paneClass('tree')}`}
+      >
         <div className="border-b p-3">
           <TopicList />
         </div>
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {activeTopicId ? (
             <Tracer topicId={activeTopicId} />
           ) : (
@@ -117,19 +149,34 @@ export default function Page() {
       </aside>
 
       {/* CENTER: main conversation with inline branches */}
-      <section className="flex h-full min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b bg-white px-4 py-3">
+      <section
+        className={`min-h-0 min-w-0 flex-1 flex-col lg:h-full ${paneClass('chat')}`}
+      >
+        <header className="flex shrink-0 items-center justify-between border-b bg-white px-4 py-3">
           <div className="min-w-0">
             <div className="text-xs uppercase tracking-wide text-gray-500">主对话</div>
             <h1 className="truncate font-semibold">
               {topic?.title ?? '费曼 AI · 用提问追溯理解'}
             </h1>
           </div>
-          <div className="text-xs text-gray-400">
+          <div className="hidden text-xs text-gray-400 lg:block">
             框选 AI 回复中的任意文本，弹出按钮即可创建分支
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto p-4">
+
+        {lastError && (
+          <div
+            role="alert"
+            className="hidden shrink-0 items-start gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800 lg:flex"
+          >
+            <span className="min-w-0 flex-1">{lastError}</span>
+            <button onClick={() => setLastError(null)} className="text-red-500 hover:text-red-700">
+              关闭
+            </button>
+          </div>
+        )}
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {activeTopicId ? (
             <ConversationView topicId={activeTopicId} branchId="main" />
           ) : topicsLoaded && topicsOrder.length === 0 ? (
@@ -142,17 +189,22 @@ export default function Page() {
         </div>
         <ChatInput
           disabled={!!streamingId}
+          streaming={!!streamingId}
+          onStop={() => stopStreaming()}
           placeholder={activeTopicId ? '继续主对话…' : '提出你的第一个问题…'}
           onSend={(text) => void ensureTopicAndSend(text)}
         />
       </section>
 
-      {/* Drag handle */}
+      {/* Drag handle (desktop only) */}
       <div
-        className="group relative flex w-1 flex-shrink-0 cursor-col-resize items-center justify-center bg-gray-200 hover:bg-blue-300 active:bg-blue-400"
-        onMouseDown={onMouseDown}
+        className="group relative hidden w-1 flex-shrink-0 cursor-col-resize items-center justify-center bg-gray-200 hover:bg-blue-300 active:bg-blue-400 lg:flex"
+        onPointerDown={onPointerDown}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整右侧面板宽度"
       >
-        <div className="flex flex-col items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex flex-col items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <div className="h-1 w-1 rounded-full bg-gray-400" />
           <div className="h-1 w-1 rounded-full bg-gray-400" />
           <div className="h-1 w-1 rounded-full bg-gray-400" />
@@ -161,8 +213,8 @@ export default function Page() {
 
       {/* RIGHT: focused branch detail */}
       <aside
-        className="flex h-full flex-col border-l bg-gray-50"
-        style={{ width: rightWidth }}
+        className={`min-h-0 w-full flex-1 flex-col border-l bg-gray-50 lg:h-full lg:w-[var(--right-width)] lg:flex-none ${paneClass('focus')}`}
+        style={{ '--right-width': `${rightWidth}px` } as React.CSSProperties}
       >
         {activeTopicId ? (
           <BranchFocusPanel topicId={activeTopicId} />
@@ -172,7 +224,34 @@ export default function Page() {
           </div>
         )}
       </aside>
+
+      {/* Bottom tab bar (mobile only) */}
+      <nav
+        className="flex shrink-0 border-t bg-white lg:hidden"
+        aria-label="切换视图"
+      >
+        {TABS.map((t) => {
+          const active = mobilePane === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setMobilePane(t.id)}
+              aria-current={active ? 'page' : undefined}
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${
+                active ? 'text-blue-600' : 'text-gray-500'
+              }`}
+            >
+              <span aria-hidden className="text-base leading-none">
+                {t.icon}
+              </span>
+              <span>{t.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
       {feynmanModalOpen && activeTopicId && <FeynmanModal topicId={activeTopicId} />}
+      {settingsOpen && <SettingsModal />}
     </main>
   );
 }

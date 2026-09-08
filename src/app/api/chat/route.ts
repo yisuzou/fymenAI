@@ -1,39 +1,64 @@
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
 import { getProvider } from '@/lib/llm';
-import { SYSTEM_TEACHER, SYSTEM_BRANCH, SYSTEM_FEYNMAN_GRADER } from '@/lib/llm/prompts';
-
-const Schema = z.object({
-  messages: z.array(z.object({ role: z.enum(['user', 'assistant', 'system']), content: z.string() })),
-  mode: z.enum(['teach', 'branch', 'grade']).optional(),
-  selectedText: z.string().optional(),
-  parentContext: z.string().optional(),
-});
+import type { LLMMessage } from '@/lib/llm/types';
+import {
+  SYSTEM_TEACHER,
+  SYSTEM_BRANCH,
+  SYSTEM_FEYNMAN_GRADER,
+  branchContextMessage,
+} from '@/lib/llm/prompts';
+import {
+  ChatRequestSchema,
+  badRequest,
+  checkAuth,
+  checkRateLimit,
+  clientKey,
+  errorResponse,
+} from '@/lib/api/guard';
+import { NDJSON_HEADERS, createNdjsonStream } from '@/lib/api/stream';
 
 export async function POST(req: NextRequest) {
-  const body = Schema.parse(await req.json());
-  const sys =
-    body.mode === 'grade'
-      ? SYSTEM_FEYNMAN_GRADER
-      : body.mode === 'branch' && body.selectedText
-        ? SYSTEM_BRANCH(body.selectedText, body.parentContext ?? '')
-        : SYSTEM_TEACHER;
-  const messages = [{ role: 'system' as const, content: sys }, ...body.messages];
+  // Reject before doing any work, and before opening a stream, so these are
+  // real status codes rather than an error buried in a 200 response body.
+  const denied = checkAuth(req) ?? checkRateLimit(clientKey(req));
+  if (denied) return denied;
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      try {
-        for await (const chunk of getProvider().chatStream(messages)) {
-          controller.enqueue(encoder.encode(chunk));
-        }
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        controller.enqueue(encoder.encode(`\n[ERROR]${msg}`));
-      } finally { controller.close(); }
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return errorResponse(400, { code: 'invalid_json', message: '请求体不是合法 JSON。' });
+  }
+
+  const parsed = ChatRequestSchema.safeParse(raw);
+  if (!parsed.success) return badRequest(parsed.error);
+  const body = parsed.data;
+
+  const messages: LLMMessage[] = [];
+  if (body.mode === 'grade') {
+    messages.push({ role: 'system', content: SYSTEM_FEYNMAN_GRADER });
+  } else if (body.mode === 'branch' && body.selectedText) {
+    // Framed text travels as tagged data in a user turn, not as a system
+    // instruction — see SYSTEM_BRANCH.
+    messages.push({ role: 'system', content: SYSTEM_BRANCH });
+    messages.push({
+      role: 'user',
+      content: branchContextMessage(body.selectedText, body.parentContext ?? ''),
+    });
+  } else {
+    messages.push({ role: 'system', content: SYSTEM_TEACHER });
+  }
+  messages.push(...body.messages);
+
+  const stream = createNdjsonStream(
+    () => getProvider().chatStream(messages, { json: body.mode === 'grade' }),
+    (e) => {
+      // Raw provider errors can carry the base URL, model name and quota
+      // details — log them, send the client a stable code instead.
+      console.error('[api/chat] provider error:', e);
+      return { code: 'provider_error', message: '模型调用失败，请稍后重试。' };
     },
-  });
-  return new Response(stream, {
-    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' },
-  });
+  );
+
+  return new Response(stream, { headers: NDJSON_HEADERS });
 }

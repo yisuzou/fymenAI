@@ -1,18 +1,22 @@
 'use client';
-import { useState } from 'react';
-import { fetchStream } from '@/lib/utils/fetchStream';
+import { useEffect, useRef, useState } from 'react';
+import { streamEvents, ApiRequestError } from '@/lib/api/stream';
+import { authHeaders } from '@/lib/api/client';
 import { parseGrade, type GradeResult } from '@/lib/utils/grader';
-import { useFeynmanStore } from '@/lib/store/feynmanStore';
+import { useFeynmanStore, pickResult } from '@/lib/store/feynmanStore';
 
 interface Props {
+  /** Display label of the concept under test (the question or framed text). */
   topic: string;
-  topicId?: string;
+  topicId: string;
+  /** Stable node identity from `lib/tree.ts` — what results are keyed by. */
+  nodeKey: string;
 }
 
-export function FeynmanCheck({ topic, topicId }: Props) {
+export function FeynmanCheck({ topic, topicId, nodeKey }: Props) {
   const saveResult = useFeynmanStore((s) => s.setResult);
-  const storedResult = useFeynmanStore((s) =>
-    topicId ? (s.results[topicId]?.[topic] ?? null) : null,
+  const storedResult = useFeynmanStore(
+    (s) => pickResult(s, topicId, nodeKey, topic) ?? null,
   );
   const [mode, setMode] = useState<'idle' | 'input' | 'result'>(
     storedResult ? 'result' : 'idle',
@@ -22,6 +26,10 @@ export function FeynmanCheck({ topic, topicId }: Props) {
   const [raw, setRaw] = useState('');
   const [result, setResult] = useState<GradeResult | null>(storedResult);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Abort an in-flight grade if the panel goes away mid-request.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   async function handleSubmit() {
     if (!input.trim() || loading) return;
@@ -30,28 +38,42 @@ export function FeynmanCheck({ topic, topicId }: Props) {
     setError(null);
     setRaw('');
     const userMessage = `我学习的概念是：「${topic}」\n\n我的复述：\n${input.trim()}`;
+    const controller = new AbortController();
+    abortRef.current = controller;
     let acc = '';
+    let failed = false;
     try {
-      for await (const chunk of fetchStream('/api/chat', {
-        mode: 'grade',
-        messages: [{ role: 'user', content: userMessage }],
-      })) {
-        acc += chunk;
-        setRaw(acc);
+      for await (const ev of streamEvents(
+        '/api/chat',
+        { mode: 'grade', messages: [{ role: 'user', content: userMessage }] },
+        { signal: controller.signal, headers: authHeaders() },
+      )) {
+        if (ev.t === 'delta') {
+          acc += ev.v;
+          setRaw(acc);
+        } else if (ev.t === 'error') {
+          setError(ev.message);
+          failed = true;
+          break;
+        } else {
+          break; // done
+        }
       }
-      const parsed = parseGrade(acc);
-      if (!parsed) {
-        setError('无法解析评估结果，请重试。');
-      } else {
-        setResult(parsed);
-        setMode('result');
-        if (topicId) {
-          saveResult(topicId, topic, { ...parsed, testedAt: Date.now() });
+      if (!failed) {
+        const parsed = parseGrade(acc);
+        if (!parsed) {
+          setError('无法解析评估结果，请重试。');
+        } else {
+          setResult(parsed);
+          setMode('result');
+          saveResult(topicId, nodeKey, { ...parsed, testedAt: Date.now() });
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      setError(e instanceof ApiRequestError ? e.message : '评估请求失败，请稍后重试。');
     } finally {
+      abortRef.current = null;
       setLoading(false);
     }
   }

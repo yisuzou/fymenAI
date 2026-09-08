@@ -115,6 +115,82 @@ export function deleteMessage(id: string) {
   getDb().prepare(`DELETE FROM messages WHERE id = ?`).run(id);
 }
 
+/**
+ * Delete a message and everything that depends on it, in one transaction.
+ *
+ * A plain `DELETE FROM messages WHERE id = ?` orphaned data: later messages in
+ * the same branch lost the turn they answered, and every follow-up branch
+ * anchored to the deleted message still pointed at a row that no longer
+ * existed — those branches then vanished from the tree while their rows stayed
+ * in the database forever.
+ *
+ * Doomed set:
+ *   1. the target message,
+ *   2. every later message in the same branch (they continue the same thread),
+ *   3. recursively, every branch anchored to any doomed message, in full.
+ *
+ * Returns the deleted ids so a client can prune its own cache.
+ */
+export function deleteMessageCascade(id: string): string[] {
+  const db = getDb();
+  const target = getMessage(id);
+  if (!target) return [];
+  const topicId = target.topicId;
+
+  const tailStmt = db.prepare(
+    `SELECT id FROM messages
+     WHERE topic_id = ? AND branch_id = ? AND (created_at > ? OR id = ?)`,
+  );
+  const branchesFromStmt = db.prepare(
+    `SELECT branch_id as branchId FROM messages
+     WHERE topic_id = ? AND branch_from_parent_id = ?`,
+  );
+  const branchMessagesStmt = db.prepare(
+    `SELECT id FROM messages WHERE topic_id = ? AND branch_id = ?`,
+  );
+  const deleteStmt = db.prepare(`DELETE FROM messages WHERE id = ?`);
+
+  const run = db.transaction((): string[] => {
+    const doomed = new Set<string>();
+    const seenBranches = new Set<string>();
+    const queue: string[] = [];
+
+    for (const r of tailStmt.all(topicId, target.branchId, target.createdAt, target.id) as {
+      id: string;
+    }[]) {
+      if (!doomed.has(r.id)) {
+        doomed.add(r.id);
+        queue.push(r.id);
+      }
+    }
+
+    while (queue.length) {
+      const messageId = queue.pop()!;
+      for (const b of branchesFromStmt.all(topicId, messageId) as { branchId: string }[]) {
+        if (seenBranches.has(b.branchId)) continue;
+        seenBranches.add(b.branchId);
+        for (const r of branchMessagesStmt.all(topicId, b.branchId) as { id: string }[]) {
+          if (!doomed.has(r.id)) {
+            doomed.add(r.id);
+            queue.push(r.id);
+          }
+        }
+      }
+    }
+
+    for (const messageId of doomed) deleteStmt.run(messageId);
+
+    // The topic's root pointer must not survive its target.
+    const topic = getTopic(topicId);
+    if (topic?.rootMessageId && doomed.has(topic.rootMessageId)) {
+      db.prepare(`UPDATE topics SET root_message_id = NULL WHERE id = ?`).run(topicId);
+    }
+    return [...doomed];
+  });
+
+  return run();
+}
+
 export function listMessagesByTopic(topicId: string): Message[] {
   const rows = getDb().prepare(
     `SELECT ${MSG_COLS} FROM messages WHERE topic_id = ? ORDER BY created_at ASC`
@@ -125,4 +201,42 @@ export function listMessagesByTopic(topicId: string): Message[] {
 export function getMessage(id: string): Message | null {
   const r = getDb().prepare(`SELECT ${MSG_COLS} FROM messages WHERE id = ?`).get(id) as RawMessage | undefined;
   return r ? rowToMessage(r) : null;
+}
+
+/* ------------------------------------------------------------------ settings */
+
+/**
+ * Runtime configuration written from the settings UI.
+ *
+ * An absent row and an empty value mean the same thing — "no override, fall
+ * back to the environment" — so `setSetting(key, '')` deletes instead of
+ * storing a blank that would shadow a real env var.
+ */
+export function getSetting(key: string): string | null {
+  const r = getDb().prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
+    | { value: string }
+    | undefined;
+  return r?.value ?? null;
+}
+
+export function setSetting(key: string, value: string): void {
+  if (value === '') return deleteSetting(key);
+  getDb()
+    .prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    )
+    .run(key, value, Date.now());
+}
+
+export function deleteSetting(key: string): void {
+  getDb().prepare(`DELETE FROM settings WHERE key = ?`).run(key);
+}
+
+export function getAllSettings(): Record<string, string> {
+  const rows = getDb().prepare(`SELECT key, value FROM settings`).all() as {
+    key: string;
+    value: string;
+  }[];
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
